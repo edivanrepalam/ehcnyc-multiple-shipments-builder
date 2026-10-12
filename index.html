@@ -431,7 +431,7 @@ const CONFIG = {
     ]}
   ],
   forms: ['Injectable', 'Tablets', 'Troches', 'Gel Troches', 'Veggie Capsules', 'Meal Replacement Shake', 'Powder'],
-  frequencies: ['Once a week', 'Twice a week', 'Once every 10 days', 'Once every 2 weeks', 'Once daily'],
+  frequencies: ['Once a week', 'Twice a week', 'Once every 10 days', 'Once every 2 weeks', 'Once daily', 'Every other day'],
   requestedVia: ['Refill Form', 'Website', 'Phone', 'Text', 'Email'],
   signatureTypes: ['No signature', 'Direct signature', 'Indirect signature'],
   // fields a new product copies from the product above it
@@ -1073,6 +1073,7 @@ function budDoseCount(freq) {
   if (f === 'once every 2 weeks') return 6;
   if (f === 'once every 10 days') return 84 / 10;
   if (f === 'once daily') return 84;
+  if (f === 'every other day') return 84 / 2;
   return NaN;
 }
 
