@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Order Summary Builder | Elite Health Center NYC</title>
+<title>Refill Request Builder | Elite Health Center NYC</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -184,7 +184,7 @@ button{font:inherit}
     <img class="brand-logo" alt="EHCNYC Elite Health Center NYC">
     <div class="brand-divider"></div>
     <div>
-      <h1>Order summary</h1>
+      <h1>Refill Request</h1>
       <p>Internal use</p>
     </div>
   </div>
@@ -358,6 +358,7 @@ button{font:inherit}
    - form auto-fills the Form field; tag shows as a pill in the email
    ============================================================ */
 const FRIDGE = 'Keep refrigerated';
+const COOL_DRY = 'Store in a cool, dry place (away from heat, moisture & sunlight).';
 const CONFIG = {
   clinicName: 'Elite Health Center NYC',
   tagline: "New York's Premier Online Weight Loss Clinic.",
@@ -409,7 +410,7 @@ const CONFIG = {
         { label: '5mL (10mg/mL)', pharmacy: 'Striker Pharmacy' }] },
       { name: 'Glow: GHK-Cu, BPC-157 & TB-500', form: 'Injectable', tag: FRIDGE, programs: [
         { label: '3mL (9mg/1.66mg/3.33mg/mL)', pharmacy: 'Striker Pharmacy' }] },
-      { name: 'Bioboost Plus', form: 'Injectable', tag: FRIDGE, programs: [
+      { name: 'Bioboost Plus', form: 'Injectable', tag: COOL_DRY, programs: [
         { label: '10mL', pharmacy: 'Hallandale Pharmacy' },
         { label: '30mL', pharmacy: 'Hallandale Pharmacy' }] },
       { name: 'MICB12', form: 'Gel Troches', programs: ['30 troches'] }
@@ -878,8 +879,17 @@ function kvPanel(rows) {
   }).join(''));
 }
 
-function pill(text, bg, fg, border) {
-  return `<span style="display:inline-block;white-space:nowrap;margin:6px 6px 0 0;padding:3px 10px;border-radius:999px;background-color:${bg};border:1px solid ${border};font-family:${F};font-size:11px;line-height:16px;font-weight:700;color:${fg};">${text}</span>`;
+function pill(text, bg, fg, border, wrap = false) {
+  // wrap = long text (storage note): may break onto a second line, softer corners so it never looks like a stretched capsule
+  const shape = wrap ? 'white-space:normal;border-radius:12px;' : 'white-space:nowrap;border-radius:999px;';
+  return `<span style="display:inline-block;${shape}margin:6px 6px 0 0;padding:3px 10px;background-color:${bg};border:1px solid ${border};font-family:${F};font-size:11px;line-height:16px;font-weight:700;color:${fg};">${text}</span>`;
+}
+
+// Storage tag pill: refrigerated keeps the teal snowflake pill; the cool/dry note is sage green with no icon.
+function tagPill(tag) {
+  if (!tag) return '';
+  if (tag === COOL_DRY) return pill(esc(tag), '#e6f3e8', '#27613a', '#c4e0c9', true);
+  return pill(`&#10052; ${esc(tag)}`, C.pill, C.accentDark, '#cde8f0');
 }
 
 function stat(label, value) {
@@ -933,7 +943,7 @@ function itemCard(it) {
   const pills = [
     it.type ? pill(esc(it.type), '#e9f0f3', C.navy, '#d3e0e5') : '',
     it.benefit ? pill(esc(it.benefit), '#e9f0f3', C.navy, '#d3e0e5') : '',
-    it.tag ? pill(`&#10052; ${esc(it.tag)}`, C.pill, C.accentDark, '#cde8f0') : ''
+    tagPill(it.tag)
   ].join('');
   const notes = (wellness ? programBox(it.program, it.shipments) + noteLine('Directions for use', it.directions) : '')
     + (it.medOwed === 'Yes'
@@ -1161,7 +1171,8 @@ function refillLogicSections(it) {
 
   const sectionI = `<tr><td style="padding:24px 30px 0;font-family:${F};font-size:14px;line-height:22px;color:${C.ink};">
 <p style="margin:0;"><strong>I.</strong> Based on your refill request of a <strong>${esc(it.program || '')}</strong> ${esc(it.name)} program${availableText ? ` which has <strong>${esc(availableText)}</strong> available` : ''}:</p>
-${administeredText ? `<p style="margin:16px 0 0;">- Your total # of units administered in the BUD period (~12 weeks) is <strong>${esc(administeredText)}</strong>.${perDoseText && frequencyText ? ` (${esc(perDoseText)} ${esc(frequencyText)}).` : ''}</p>` : ''}
+${administeredText ? `<p style="margin:16px 0 0;">- Your total # of units administered in the BUD period (~12 weeks) is <strong>${esc(administeredText)}</strong>.${perDoseText && frequencyText ? ` (${esc(perDoseText)} ${esc(frequencyText)}).` : ''}</p>` : ''}${it.tag === COOL_DRY ? `
+<div style="padding-top:10px;">${tagPill(it.tag)}</div>` : ''}
 </td></tr>`;
 
   const shipmentLines = shipments.map((sh, i) => {
