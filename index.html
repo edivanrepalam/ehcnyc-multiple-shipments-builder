@@ -131,10 +131,6 @@ button{font:inherit}
 .field input.calc:focus{box-shadow:0 0 0 3px rgba(139,203,221,.35)}
 .field.hl label{color:var(--accent)}
 .field.hl input{background:rgba(139,203,221,.32);border-color:rgba(42,142,168,.55);font-weight:700}
-/* Owed Medication and its request instructions share the same light blue highlight */
-.field.owed-field label,.field.owed-request-field label{color:var(--accent);font-weight:700}
-.field.owed-field input,.field.owed-request-field input,.field.owed-request-field textarea{background:rgba(139,203,221,.4);border-color:rgba(42,142,168,.6);font-weight:600}
-.field.owed-field input::placeholder,.field.owed-request-field input::placeholder,.field.owed-request-field textarea::placeholder{color:rgba(42,100,120,.6);font-weight:500}
 /* product block: accent edge as inset shadow so dropdown menus aren't clipped */
 .item{overflow:visible;padding-bottom:22px;box-shadow:inset 4px 0 0 #6fbdd2,0 4px 18px rgba(9,46,57,.06)}
 .item::before{display:none}
@@ -199,11 +195,19 @@ button{font:inherit}
       <div class="grid">
         <div class="field span-2"><label>Name <span class="req">*</span></label><input data-k="name" placeholder="Last, First" autocomplete="off"></div>
         <div class="field"><label>Total Due</label><div class="money"><span>$</span><input data-k="totalPaid" class="calc" type="text" readonly placeholder="0.00" title="Each order's Total + shipping + medical consultation"></div></div>
+        <div class="field span-2"><label>Payment Method</label><select data-k="payMethod" data-opts="paymentMethods" data-default="defaultPaymentMethod"></select>
+          <p class="help">Decides what shows under V. Credit Card keeps the confirm-payment sentence; Payment Link swaps it for a &ldquo;Click here to Pay&rdquo; button.</p></div>
       </div>
     </div>
 
     <div class="card glass">
-      <div class="card-head"><h2>I. Refill request</h2><span class="count" id="itemCount">1 product</span></div>
+      <div class="card-head"><h2>I. Medical clearance</h2></div>
+      <div class="field"><label>Provider contact (prefilled, editable)</label><textarea data-k="providerContact" data-default="providerContactMessage" class="two-line" rows="2" placeholder="e.g. One of our providers can contact you today, MM/DD/YYYY, between 7:00pm &amp; 7:30pm ET."></textarea>
+        <p class="help">Shows under I in the email, with the consultation fee on the next line (uses the Medical consultation amount in IV). Edit the date and time each time; clear it to hide this sentence.</p></div>
+    </div>
+
+    <div class="card glass">
+      <div class="card-head"><h2>II. Refill request</h2><span class="count" id="itemCount">1 product</span></div>
       <div id="items"></div>
       <button type="button" class="btn btn-add" id="addItem">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
@@ -213,24 +217,20 @@ button{font:inherit}
     </div>
 
     <div class="card glass">
-      <div class="card-head"><h2>III. Medical clearance</h2></div>
-      <div class="field"><label>Provider contact (prefilled, editable)</label><textarea data-k="providerContact" data-default="providerContactMessage" class="two-line" rows="2" placeholder="e.g. One of our providers can contact you today, MM/DD/YYYY, between 7:00pm &amp; 7:30pm ET."></textarea>
-        <p class="help">Shows under III in the email. Edit the date and time each time; clear it to hide the line.</p></div>
-    </div>
-
-    <div class="card glass">
       <div class="card-head"><h2>IV. Total due breakdown</h2></div>
       <div class="grid">
         <div class="field"><label>Shipping (per shipment)</label><div class="money"><span>$</span><input data-k="shippingRate" data-default="shippingRate" type="number" min="0" step="0.01" placeholder="0.00"></div></div>
         <div class="field"><label>Medical consultation</label><div class="money"><span>$</span><input data-k="consultFee" data-default="consultFee" type="number" min="0" step="0.01" placeholder="0.00"></div></div>
       </div>
-      <p class="help">Shows under IV in the email. Total Due = each order's Total in I + shipping (# of shipments &times; rate) + medical consultation. Clear shipping or consultation to leave it out.</p>
+      <p class="help">Shows under IV in the email. Total Due = each order's Total in II + shipping (# of shipments &times; rate) + medical consultation. Clear shipping or consultation to leave it out.</p>
     </div>
 
     <div class="card glass">
       <div class="card-head"><h2>V. Next steps</h2></div>
-      <div class="field"><label>Next steps (prefilled, editable)</label><textarea data-k="nextSteps" data-default="nextStepsMessage" rows="3" placeholder="e.g. To proceed with your medical consultation &amp; your refill request, please confirm we can process payment with your Visa ending in 0000 with your reply to this email."></textarea>
+      <div class="field" id="nextStepsField"><label>Next steps (prefilled, editable)</label><textarea data-k="nextSteps" data-default="nextStepsMessage" rows="3" placeholder="e.g. To proceed with your medical consultation &amp; your refill request, please confirm we can process payment with your Visa ending in 0000 with your reply to this email."></textarea>
         <p class="help">Shows under V in the email. Update the card brand and last 4 digits each time; clear it to hide the line.</p></div>
+      <div class="field" id="payLinkField" hidden><label>Payment link <span class="req">*</span></label><input data-k="payLink" type="url" placeholder="https://" autocomplete="off">
+        <p class="help">Shows under V as a &ldquo;Click here to Pay&rdquo; button, in place of the sentence above. The link is different for every patient, so paste it here each time.</p></div>
     </div>
 
     <div class="card glass">
@@ -328,12 +328,7 @@ button{font:inherit}
           <div class="units-menu glass" role="listbox" aria-label="Units available" hidden></div>
         </div>
       </div>
-      <div class="field"><label>Medication Owed?</label><select data-f="medOwed"></select></div>
-      <!--<div class="field"><label>Vials (mL) being shipped</label><input data-f="ship" type="number" min="0" placeholder="e.g. 1"></div>
-      <div class="field"><label>#mLs OWED</label><input data-f="owed" type="number" min="0" placeholder="0"></div>-->
       <div class="field span-3 directions-field" hidden><label>Directions for use</label><input data-f="directions" placeholder="e.g. Take 2 capsules daily with food"></div>
-      <div class="field span-3 owed-field" hidden><label>Owed Medication</label><input data-f="owedMed" placeholder="Shipment #2, #3, etc."></div>
-      <div class="field span-3 owed-request-field" hidden><label>To Request Your Owed Medication</label><textarea data-f="owedRequest" class="two-line" rows="2" placeholder="Please contact us to request the medication owed to you (7) business days prior to your last injection.">Please contact us to request the medication owed to you (7) business days prior to your last injection.</textarea></div>
     </div>
 
 </template>
@@ -364,6 +359,9 @@ const CONFIG = {
   tagline: "New York's Premier Online Weight Loss Clinic.",
   providerContactMessage: 'One of our providers can contact you today, 10/5/2026, between 7:00pm & 7:30pm ET.',
   nextStepsMessage: 'To proceed with your medical consultation & your refill request, please confirm we can process payment with your Visa ending in 5532 with your reply to this email.',
+  paymentMethods: ['Payment Link', 'Invoices', 'Credit Card'],
+  defaultPaymentMethod: 'Credit Card',   // Credit Card = section V exactly as before
+  payButtonText: 'Click here to Pay',    // button shown under V when Payment Method is Payment Link
   shippingRate: '35',      // $ per shipment on the IV breakdown (editable in the form)
   consultFee: '45',        // $ medical consultation on the IV breakdown (editable in the form)
   afterPaymentOptions: [
@@ -458,7 +456,6 @@ const PRODUCTS = CONFIG.catalog.flatMap(g => g.items.map(p => ({
 PRODUCTS.forEach((p, i) => { p.id = String(i); });
 const WELLNESS_GROUP = 'Wellness & Vitality Collection';
 const BENEFITS = [...new Set(PRODUCTS.map(p => p.benefit).filter(Boolean))];
-const OWED_REQUEST_MESSAGE = 'Please contact us to request the medication owed to you (7) business days prior to your last injection.';
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -514,6 +511,7 @@ function applyDefaults() {
   $$('select[data-opts]').forEach(sel => fillSelect(sel, CONFIG[sel.dataset.opts], sel.dataset.ph));
   $$('[data-default]').forEach(el => { el.value = CONFIG[el.dataset.default] || ''; });
   $$('.field.invalid').forEach(f => f.classList.remove('invalid'));
+  syncPayMethod();
   $('#extraLinks').innerHTML = '';
   addLink(); addLink();   // two empty link rows to start
   const via = $('#viaMulti');
@@ -528,6 +526,13 @@ function applyDefaults() {
       `<label class="multi-opt"><input type="checkbox" value="${esc(v)}"><span>${esc(v)}</span></label>`).join('');
     syncMulti(pay);
   }
+}
+
+// V. Next steps: Payment Link swaps the sentence for the pay-button link field; Credit Card / Invoices keep the sentence.
+function syncPayMethod() {
+  const link = $('[data-k=payMethod]').value === 'Payment Link';
+  $('#nextStepsField').hidden = link;
+  $('#payLinkField').hidden = !link;
 }
 
 function productOptions() {
@@ -551,29 +556,6 @@ function setValues(node, data) {
     }
   });
   syncType(node);
-  syncOwed(node);
-}
-
-// Owed Medication details only show when Medication Owed? is Yes.
-function syncOwed(node) {
-  const hasOwed = $('[data-f=medOwed]', node).value === 'Yes';
-  const owedField = $('.owed-field', node);
-  const requestField = $('.owed-request-field', node);
-  owedField.hidden = !hasOwed;
-  requestField.hidden = !hasOwed;
-  if (hasOwed) {
-    const request = $('[data-f=owedRequest]', node);
-    if (!request.value.trim()) request.value = OWED_REQUEST_MESSAGE;
-  }
-}
-
-// More than one shipment always means there is medication owed.
-function syncShipmentOwed(node) {
-  const shipments = Number($('[data-f=shipments]', node).value);
-  if (Number.isFinite(shipments) && shipments > 1) {
-    $('[data-f=medOwed]', node).value = 'Yes';
-  }
-  syncOwed(node);
 }
 
 function addItem(data = {}) {
@@ -583,18 +565,12 @@ function addItem(data = {}) {
   fillSelect($('[data-f=type]', node), CONFIG.forms, 'Select');
   fillSelect($('[data-f=freq]', node), CONFIG.frequencies, 'Select');
   fillSelect($('[data-f=benefit]', node), BENEFITS, 'Select');
-  fillSelect($('[data-f=medOwed]', node), ['No', 'Yes']);
   $('[data-f=orderDate]', node).value = todayISO();
-  // Default instructions for requesting medication owed. Preserve copied/loaded edits, including an intentionally blank value.
-  if (!Object.prototype.hasOwnProperty.call(data, 'owedRequest')) {
-    $('[data-f=owedRequest]', node).value = data.comments || OWED_REQUEST_MESSAGE;
-  }
 
   if (data.med) $('[data-f=med]', node).value = data.med;
   syncProduct(node);
   if (data.program) $('[data-f=program]', node).value = data.program;
   setValues(node, data);
-  syncShipmentOwed(node);
 
   $('#items').appendChild(node);
   renumber();
@@ -794,16 +770,15 @@ function readItem(node) {
       ? $$('input:checked', el).map(c => c.value).join(', ')
       : el.value.trim();
   });
-  if (o.medOwed === 'Yes' && !o.owedRequest) o.owedRequest = OWED_REQUEST_MESSAGE;
   return o;
 }
 
-// An order counts toward Total Due once its Total (section I) is entered
+// An order counts toward Total Due once its Total (section II) is entered
 const billedItems = items => items.filter(i => i.total !== '' && !isNaN(Number(i.total)));
-// A blank # of shipments counts as 1 (same as section II)
+// A blank # of shipments counts as 1 (same as section III)
 const shipmentCount = it => Math.max(1, parseInt(it.shipments, 10) || 1);
 
-// Total Due = each order's Total (section I) + shipping (# of shipments x rate, per order) + medical consultation.
+// Total Due = each order's Total (section II) + shipping (# of shipments x rate, per order) + medical consultation.
 // Blank until at least one Total is entered.
 function calcTotalPaid(items, shippingRate = '', consultFee = '') {
   const billed = billedItems(items);
@@ -829,7 +804,6 @@ function readState() {
     o.tag = (p && p.tag) || (o.type === 'Injectable' ? FRIDGE : '');   // all injectables must be refrigerated
     return o;
   });
-  s.rows = rows;                           // every product row, used for the owed-medication lines
   s.items = rows.filter(o => o.name);
   s.totalPaid = calcTotalPaid(s.items, s.shippingRate, s.consultFee);
   return s;
@@ -842,8 +816,7 @@ const F = "'Helvetica Neue',Helvetica,Arial,sans-serif";
 const C = {
   navy: '#092e39', blue: '#8bcbdd', accent: '#2a8ea8', accentDark: '#1f7489', pill: '#e1f2f7',
   ink: '#12303a', muted: '#5d7682', line: '#dcecf1', panel: '#f3f9fb', stat: '#eef7fa',
-  page: '#e3f0f5', card: '#fbfdfe', hl: '#dff1f6', hlLine: '#b9e1ec', danger: '#c62828',
-  banana: '#fffec5'
+  page: '#e3f0f5', card: '#fbfdfe', hl: '#dff1f6', hlLine: '#b9e1ec', danger: '#c62828'
 };
 
 function heading(text, right = '') {
@@ -913,13 +886,6 @@ function noteLine(label, text, alert = false) {
     : '';
 }
 
-// Owed Medication: banana yellow highlight. Nested table keeps the color inside the card padding (Gmail-safe: bgcolor + inline style).
-function owedLine(label, text) {
-  return text
-    ? `<tr><td style="padding:0 16px 10px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${C.banana}" style="border-collapse:separate;background-color:${C.banana};border-radius:10px;"><tr><td style="padding:8px 12px;font-family:${F};font-size:13px;line-height:19px;color:${C.ink};"><span style="font-weight:700;color:${C.navy};">${esc(label)}:</span> ${esc(text)}</td></tr></table></td></tr>`
-    : '';
-}
-
 function itemCard(it) {
   const inj = it.type === 'Injectable';
   const wellness = (PRODUCTS[it.med] || {}).group === WELLNESS_GROUP;   // Benefits pill + one-line Program
@@ -945,10 +911,7 @@ function itemCard(it) {
     it.benefit ? pill(esc(it.benefit), '#e9f0f3', C.navy, '#d3e0e5') : '',
     tagPill(it.tag)
   ].join('');
-  const notes = (wellness ? programBox(it.program, it.shipments) + noteLine('Directions for use', it.directions) : '')
-    + (it.medOwed === 'Yes'
-      ? owedLine('Owed Medication', it.owedMed) + owedLine('To Request Your Owed Medication', it.owedRequest || OWED_REQUEST_MESSAGE)
-      : '');
+  const notes = (wellness ? programBox(it.program, it.shipments) + noteLine('Directions for use', it.directions) : '');
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;background-color:#ffffff;border:1px solid ${C.line};border-left:4px solid ${C.blue};border-radius:14px;margin:0 0 10px 0;box-shadow:0 6px 18px rgba(9,46,57,0.06);">
 <tr><td style="padding:14px 16px ${pills ? 0 : 6}px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
@@ -1050,7 +1013,7 @@ ${line(a('https://' + S.website, S.website, true))}
 }
 
 
-/* ---------- Refill email sections I & II ---------- */
+/* ---------- Refill email sections II & III ---------- */
 function numberFromText(value) {
   const m = String(value || '').replace(/,/g, '').match(/-?\d+(?:\.\d+)?/);
   return m ? Number(m[0]) : NaN;
@@ -1170,7 +1133,7 @@ function refillLogicSections(it) {
   const frequencyText = it.freq ? it.freq.charAt(0).toLowerCase() + it.freq.slice(1) : '';
 
   const sectionI = `<tr><td style="padding:24px 30px 0;font-family:${F};font-size:14px;line-height:22px;color:${C.ink};">
-<p style="margin:0;"><strong>I.</strong> Based on your refill request of a <strong>${esc(it.program || '')}</strong> ${esc(it.name)} program${availableText ? ` which has <strong>${esc(availableText)}</strong> available` : ''}:</p>
+<p style="margin:0;"><strong>II.</strong> Based on your refill request of a <strong>${esc(it.program || '')}</strong> ${esc(it.name)} program${availableText ? ` which has <strong>${esc(availableText)}</strong> available` : ''}:</p>
 ${administeredText ? `<p style="margin:16px 0 0;">- Your total # of units administered in the BUD period (~12 weeks) is <strong>${esc(administeredText)}</strong>.${perDoseText && frequencyText ? ` (${esc(perDoseText)} ${esc(frequencyText)}).` : ''}</p>` : ''}${it.tag === COOL_DRY ? `
 <div style="padding-top:10px;">${tagPill(it.tag)}</div>` : ''}
 </td></tr>`;
@@ -1190,7 +1153,7 @@ ${administeredText ? `<p style="margin:16px 0 0;">- Your total # of units admini
   const totalUnitText = Number.isFinite(combinedUnits) ? `${fmtNum(combinedUnits)} units` : availableText;
 
   const sectionII = `<tr><td style="padding:24px 30px 0;font-family:${F};font-size:14px;line-height:22px;color:${C.ink};">
-<p style="margin:0;"><strong>II.</strong> To prevent your vial/s of medication from expiring during the BUD period, the pharmacy will split your order into multiple shipments as follows:</p>
+<p style="margin:0;"><strong>III.</strong> To prevent your vial/s of medication from expiring during the BUD period, the pharmacy will split your order into multiple shipments as follows:</p>
 <div style="padding:4px 0 0 18px;">${shipmentLines}
 <div style="margin-top:8px;border-top:1px dashed #7b8f98;padding-top:8px;">Total: <strong>${esc(combinedProgram)}</strong>${totalUnitText ? ` (${esc(totalUnitText)})` : ''}</div>
 </div>
@@ -1199,11 +1162,14 @@ ${administeredText ? `<p style="margin:16px 0 0;">- Your total # of units admini
   return sectionI + sectionII;
 }
 
-/* ---------- Section III: medical clearance ---------- */
-function sectionIII(s) {
-  const contact = s.providerContact ? `<p style="margin:16px 0 0;">${nl2br(s.providerContact)}</p>` : '';
+/* ---------- Section I: medical clearance (first section of the email) ---------- */
+function sectionClearance(s) {
+  const consult = fmtDollars(s.consultFee);
+  const feeLine = consult ? `A ${esc(consult)} medical consultation fee applies.` : '';
+  const contactLines = [s.providerContact ? nl2br(s.providerContact) : '', feeLine].filter(Boolean).join('<br>');
+  const contact = contactLines ? `<p style="margin:16px 0 0;">${contactLines}</p>` : '';
   return `<tr><td style="padding:24px 30px 0;font-family:${F};font-size:14px;line-height:22px;color:${C.ink};">
-<p style="margin:0;"><strong>III.</strong> Your medical clearance has expired. ${esc(CONFIG.clinicName)} needs to update your records.</p>
+<p style="margin:0;"><strong>I.</strong> <strong>Please note:</strong> Your medical clearance has expired.<br>${esc(CONFIG.clinicName)} needs to update your records.</p>
 ${contact}
 </td></tr>`;
 }
@@ -1219,33 +1185,41 @@ const fmtDollars = v => {
 function sectionIV(s) {
   const billed = billedItems(s.items);
   if (!billed.length) return '';
-  const lines = [];   // [html, indented]
+  const lines = [];   // html of each breakdown line
   const rate = fmtDollars(s.shippingRate);
   billed.forEach(it => {
-    lines.push([`${it.program ? `<strong>${esc(it.program)}</strong> ` : ''}${esc(it.name)}: <strong>${esc(fmtDollars(it.total))}</strong>`, false]);
+    lines.push(`${it.program ? `<strong>${esc(it.program)}</strong> ` : ''}${esc(it.name)}: <strong>${esc(fmtDollars(it.total))}</strong>`);
     if (rate) {
       const count = shipmentCount(it);
       const shipTotal = fmtDollars(Math.round(count * Number(s.shippingRate) * 100) / 100);
-      lines.push([`(${count}) shipment${count === 1 ? '' : 's'} <strong>${esc(shipTotal)}</strong>${count > 1 ? ` (${esc(rate)} ea.)` : ''}, UPS cold-pack shipping`, true]);
+      lines.push(`(${count}) shipment${count === 1 ? '' : 's'} <strong>${esc(shipTotal)}</strong>${count > 1 ? ` (${esc(rate)} ea.)` : ''}, UPS cold-pack shipping`);
     }
   });
   const consult = fmtDollars(s.consultFee);
-  if (consult) lines.push([`Medical Consultation: <strong>${esc(consult)}</strong>`, true]);
-  const rows = lines.map(([html, indent], i) => `<div style="padding:${i ? 5 : 12}px 0 0 ${indent ? 18 : 0}px;">${html}</div>`).join('');
-  const total = `<div style="padding:8px 0 0 18px;"><div style="border-top:1px dashed #7b8f98;padding-top:8px;">Total: <strong>${esc(fmtMoney(s.totalPaid))}</strong></div></div>`;
+  if (consult) lines.push(`Medical Consultation: <strong>${esc(consult)}</strong>`);
+  const rows = lines.map((html, i) => `<div style="padding:${i ? 5 : 12}px 0 0 0;">${html}</div>`).join('\n');
+  const total = `<div style="padding:8px 0 0 0;"><div style="border-top:1px dashed #7b8f98;padding-top:8px;">Total: <strong>${esc(fmtMoney(s.totalPaid))}</strong></div></div>`;
+  // Two columns: the numeral (as narrow as its text) and everything else, so every line starts exactly under "Please".
   return `<tr><td style="padding:24px 30px 0;font-family:${F};font-size:14px;line-height:22px;color:${C.ink};">
-<p style="margin:0;"><strong>IV.</strong> Please find a breakdown of the total due:</p>
-${rows}${total}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;"><tr>
+<td width="1" valign="top" style="width:1px;white-space:nowrap;padding:0;font-family:${F};font-size:14px;line-height:22px;color:${C.ink};"><strong>IV.</strong>&nbsp;</td><td valign="top" style="padding:0;font-family:${F};font-size:14px;line-height:22px;color:${C.ink};">Please find a breakdown of the total due:
+${rows}
+${total}
+</td></tr></table>
 </td></tr>`;
 }
 
 /* ---------- Section V: next steps ---------- */
 function sectionV(s) {
-  const steps = s.nextSteps ? `<p style="margin:16px 0 0;">${nl2br(s.nextSteps)}</p>` : '';
-  return `<tr><td style="padding:24px 30px 0;font-family:${F};font-size:14px;line-height:22px;color:${C.ink};">
+  const viaLink = s.payMethod === 'Payment Link';
+  // Payment Link: the confirm-payment sentence is dropped and a pay button takes its place.
+  // Credit Card / Invoices: the (editable) sentence, exactly as before.
+  const steps = !viaLink && s.nextSteps ? `<p style="margin:16px 0 0;">${nl2br(s.nextSteps)}</p>` : '';
+  const head = `<tr><td style="padding:24px 30px 0;font-family:${F};font-size:14px;line-height:22px;color:${C.ink};">
 <p style="margin:0;"><strong>V.</strong> Next Step/s</p>
 ${steps}
 </td></tr>`;
+  return viaLink ? head + spacer(16) + button(safeUrl(s.payLink) || '#', CONFIG.payButtonText, true) : head;
 }
 
 /* ---------- Section VI: once we receive payment ---------- */
@@ -1266,23 +1240,6 @@ function closingBlock() {
 </td></tr>`;
 }
 
-// A product row counts as owed when "Medication Owed?" is Yes or it ships more than once.
-function isOwedRow(it) { return it.medOwed === 'Yes' || Number(it.shipments) > 1; }
-
-// "Owed Medication" + "To Request Your Owed Medication" lines for the email.
-// Reads every product row (not only the first selected product) so the lines always show up.
-function owedSection(s) {
-  const owed = (s.rows || s.items).filter(isOwedRow);
-  const several = owed.length > 1;
-  const linesFor = it => {
-    const who = several && it.name ? ` (${it.name})` : '';
-    return (isOwedRow(it) ? owedLine('Owed Medication' + who, it.owedMed) : '')
-      + owedLine('To Request Your Owed Medication' + who, it.owedRequest || OWED_REQUEST_MESSAGE);
-  };
-  const html = owed.length ? owed.map(linesFor).join('') : (s.items[0] ? linesFor(s.items[0]) : '');
-  return html ? spacer(14) + html : '';
-}
-
 function buildEmailBody(s) {
   const n = s.items.length;
   const lead = s.items[0] || {};
@@ -1296,8 +1253,7 @@ function buildEmailBody(s) {
 
   const orders = (n
     ? refillLogicSections(lead)
-    : `<tr><td style="padding:24px 30px 0;font-family:${F};font-size:14px;color:${C.muted};">Add a product to build sections I and II.</td></tr>`)
-    + owedSection(s);
+    : `<tr><td style="padding:24px 30px 0;font-family:${F};font-size:14px;color:${C.muted};">Add a product to build sections II and III.</td></tr>`);
 
   const comments = s.comments
     ? heading('Comments') + panel(`<tr><td style="padding:14px 16px;font-family:${F};font-size:14px;line-height:21px;color:${C.ink};">${nl2br(s.comments)}</td></tr>`)
@@ -1327,15 +1283,15 @@ function buildEmailBody(s) {
 <tr><td style="padding:26px 30px 0;font-family:${F};">
 <div style="font-size:18px;line-height:24px;font-weight:700;color:${C.ink};">Hi there,</div>
 <div style="font-size:15px;line-height:23px;color:${C.muted};padding-top:6px;">Welcome back to ${esc(CONFIG.clinicName)}!</div>
-<div style="font-size:15px;line-height:23px;color:${C.muted};padding-top:6px;">We received your refill request form.</div>
 <div style="font-size:15px;line-height:23px;font-style:italic;color:${C.accentDark};padding-top:2px;">${esc(CONFIG.tagline)}</div>
+<div style="font-size:15px;line-height:23px;color:${C.muted};padding-top:6px;">We received your refill request form.</div>
 </td></tr>
 
 ${heading('Patient information')}
 ${patient}
 
+${sectionClearance(s)}
 ${orders}
-${sectionIII(s)}
 ${sectionIV(s)}
 ${sectionV(s)}
 ${sectionVI(s)}
@@ -1396,6 +1352,8 @@ function validate() {
   const flag = (el, label) => { el.closest('.field').classList.add('invalid'); if (!miss.includes(label)) miss.push(label); };
   const name = $('[data-k=name]');
   if (!name.value.trim()) flag(name, 'Name');
+  const payLink = $('[data-k=payLink]');
+  if ($('[data-k=payMethod]').value === 'Payment Link' && !safeUrl(payLink.value.trim())) flag(payLink, 'full https payment link');
   const items = $$('#items .item');
   items.forEach((node, i) => {
     const which = items.length > 1 ? ` in order ${i + 1}` : '';
@@ -1413,7 +1371,8 @@ function validate() {
 
 function toPlain(html) {
   const d = new DOMParser().parseFromString(html, 'text/html');
-  return d.body.textContent.replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  d.querySelectorAll('br').forEach(b => b.replaceWith('\n'));
+  return d.body.textContent.replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 async function copyRich(html) {
@@ -1474,12 +1433,25 @@ $('#copyGmail').addEventListener('click', async () => {
   toast(ok ? 'Copied. Open Gmail, click Compose, and paste.' : 'Copy was blocked. Click inside the preview, press Ctrl+A, then Ctrl+C.', !ok);
 });
 
+// Copy HTML / Download never required the other fields, but a Payment Link email must not leave with a dead pay button
+function payLinkBlocked() {
+  $$('.field.invalid').forEach(f => f.classList.remove('invalid'));
+  const link = $('[data-k=payLink]');
+  if ($('[data-k=payMethod]').value !== 'Payment Link' || safeUrl(link.value.trim())) return false;
+  link.closest('.field').classList.add('invalid');
+  toast('Add the full https payment link first', true);
+  link.closest('.field').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  return true;
+}
+
 $('#copyCode').addEventListener('click', async () => {
+  if (payLinkBlocked()) return;
   const ok = await copyText(buildEmailDoc(readState()));
   toast(ok ? 'HTML code copied' : 'Copy was blocked. Use the download button instead.', !ok);
 });
 
 $('#download').addEventListener('click', () => {
+  if (payLinkBlocked()) return;
   const s = readState();
   const name = s.name || 'draft';
   const blob = new Blob([buildEmailDoc(s)], { type: 'text/html' });
@@ -1537,16 +1509,13 @@ const formCol = $('.form-col');
 formCol.addEventListener('input', e => {
   const f = e.target.closest('.field');
   if (f) f.classList.remove('invalid');
-  const node = e.target.closest('.item');
-  if (node && e.target.dataset.f === 'shipments') syncShipmentOwed(node);
   render();
 });
 formCol.addEventListener('change', e => {
   const node = e.target.closest('.item');
   if (e.target.dataset.f === 'med') syncProduct(node);
   if (e.target.dataset.f === 'type') syncType(node);
-  if (node && e.target.dataset.f === 'shipments') syncShipmentOwed(node);
-  if (node && e.target.dataset.f === 'medOwed') syncShipmentOwed(node);
+  if (e.target.dataset.k === 'payMethod') syncPayMethod();
   const multi = e.target.closest('.multi');
   if (multi) syncMulti(multi);
   render();
