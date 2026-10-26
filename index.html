@@ -194,7 +194,7 @@ button{font:inherit}
       <div class="card-head"><h2>Patient information</h2></div>
       <div class="grid">
         <div class="field span-2"><label>Name <span class="req">*</span></label><input data-k="name" placeholder="Last, First" autocomplete="off"></div>
-        <div class="field"><label>Total Due</label><div class="money"><span>$</span><input data-k="totalPaid" class="calc" type="text" readonly placeholder="0.00" title="Each order's Total + shipping + medical consultation"></div></div>
+        <div class="field"><label>Total Due</label><div class="money"><span>$</span><input data-k="totalPaid" class="calc" type="text" readonly placeholder="0.00" title="Each order's Total + shipping + signature + medical consultation"></div></div>
         <div class="field span-2"><label>Payment Method</label><select data-k="payMethod" data-opts="paymentMethods" data-default="defaultPaymentMethod"></select>
           <p class="help">Decides what shows under V. Credit Card keeps the confirm-payment sentence; Payment Link swaps it for a &ldquo;Click here to Pay&rdquo; button.</p></div>
       </div>
@@ -221,8 +221,9 @@ button{font:inherit}
       <div class="grid">
         <div class="field"><label>Shipping (per shipment)</label><div class="money"><span>$</span><input data-k="shippingRate" data-default="shippingRate" type="number" min="0" step="0.01" placeholder="0.00"></div></div>
         <div class="field"><label>Medical consultation</label><div class="money"><span>$</span><input data-k="consultFee" data-default="consultFee" type="number" min="0" step="0.01" placeholder="0.00"></div></div>
+        <div class="field"><label>Signature type</label><select data-k="sigType" data-opts="signatureOptions" data-ph="Select"></select></div>
       </div>
-      <p class="help">Shows under IV in the email. Total Due = each order's Total in II + shipping (# of shipments &times; rate) + medical consultation. Clear shipping or consultation to leave it out.</p>
+      <p class="help">Shows under IV in the email. Total Due = each order's Total in II + shipping and signature (both charged for every shipment, so # of shipments &times; price) + medical consultation. Clear shipping or consultation, or leave Signature type unselected, to leave it out.</p>
     </div>
 
     <div class="card glass">
@@ -432,7 +433,12 @@ const CONFIG = {
   forms: ['Injectable', 'Tablets', 'Troches', 'Gel Troches', 'Veggie Capsules', 'Meal Replacement Shake', 'Powder'],
   frequencies: ['Once a week', 'Twice a week', 'Once every 10 days', 'Once every 2 weeks', 'Once daily', 'Every other day'],
   requestedVia: ['Refill Form', 'Website', 'Phone', 'Text', 'Email'],
-  signatureTypes: ['No signature', 'Direct signature', 'Indirect signature'],
+  // Signature at delivery: the price is charged for EVERY shipment (# of shipments x price, per order)
+  signatureTypes: [
+    { label: 'No Signature', price: 0 },
+    { label: 'Indirect Signature', price: 6.5 },
+    { label: 'Direct Signature', price: 7.5 }
+  ],
   // fields a new product copies from the product above it
   inheritFields: ['orderDate', 'clearedUntil'],
   signature: {
@@ -778,13 +784,18 @@ const billedItems = items => items.filter(i => i.total !== '' && !isNaN(Number(i
 // A blank # of shipments counts as 1 (same as section III)
 const shipmentCount = it => Math.max(1, parseInt(it.shipments, 10) || 1);
 
-// Total Due = each order's Total (section II) + shipping (# of shipments x rate, per order) + medical consultation.
+// Signature type dropdown: "Direct Signature ($7.50)" -> { label, price }
+const sigText = t => `${t.label} ($${t.price.toFixed(2)})`;
+CONFIG.signatureOptions = CONFIG.signatureTypes.map(sigText);
+const signatureFor = v => CONFIG.signatureTypes.find(t => sigText(t) === v) || null;
+
+// Total Due = each order's Total (section II) + shipping and signature (each # of shipments x price, per order) + medical consultation.
 // Blank until at least one Total is entered.
-function calcTotalPaid(items, shippingRate = '', consultFee = '') {
+function calcTotalPaid(items, shippingRate = '', consultFee = '', signaturePrice = 0) {
   const billed = billedItems(items);
   if (!billed.length) return '';
   const cents = v => (v !== '' && !isNaN(Number(v)) ? Math.round(Number(v) * 100) : 0);
-  const orders = billed.reduce((sum, i) => sum + cents(i.total) + cents(shippingRate) * shipmentCount(i), 0);
+  const orders = billed.reduce((sum, i) => sum + cents(i.total) + (cents(shippingRate) + cents(signaturePrice)) * shipmentCount(i), 0);
   return ((orders + cents(consultFee)) / 100).toFixed(2);
 }
 
@@ -805,7 +816,10 @@ function readState() {
     return o;
   });
   s.items = rows.filter(o => o.name);
-  s.totalPaid = calcTotalPaid(s.items, s.shippingRate, s.consultFee);
+  const sig = signatureFor(s.sigType);
+  s.sigLabel = sig ? sig.label : '';
+  s.sigPrice = sig ? sig.price : 0;
+  s.totalPaid = calcTotalPaid(s.items, s.shippingRate, s.consultFee, s.sigPrice);
   return s;
 }
 
@@ -1120,8 +1134,9 @@ function ordinal(n) {
   return `${n}${n % 10 === 1 ? 'st' : n % 10 === 2 ? 'nd' : n % 10 === 3 ? 'rd' : 'th'}`;
 }
 
-function refillLogicSections(it) {
-  if (!it || !it.name) return '';
+// Sections II and III for every product. One product reads exactly as before; with several products
+// each one gets its own II paragraph and its own III shipment list (labelled with the program + product).
+function refillPieces(it) {
   const available = cleanUnits(it.weeksPerMl);
   const administered = administeredUnitsForBud(it);
   const perDose = numberFromText(it.admin);
@@ -1132,17 +1147,6 @@ function refillLogicSections(it) {
   const perDoseText = Number.isFinite(perDose) ? `${fmtNum(perDose)} units` : (it.admin || '');
   const frequencyText = it.freq ? it.freq.charAt(0).toLowerCase() + it.freq.slice(1) : '';
 
-  const sectionI = `<tr><td style="padding:24px 30px 0;font-family:${F};font-size:14px;line-height:22px;color:${C.ink};">
-<p style="margin:0;"><strong>II.</strong> Based on your refill request of a <strong>${esc(it.program || '')}</strong> ${esc(it.name)} program${availableText ? ` which has <strong>${esc(availableText)}</strong> available` : ''}:</p>
-${administeredText ? `<p style="margin:16px 0 0;">- Your total # of units administered in the BUD period (~12 weeks) is <strong>${esc(administeredText)}</strong>.${perDoseText && frequencyText ? ` (${esc(perDoseText)} ${esc(frequencyText)}).` : ''}</p>` : ''}${it.tag === COOL_DRY ? `
-<div style="padding-top:10px;">${tagPill(it.tag)}</div>` : ''}
-</td></tr>`;
-
-  const shipmentLines = shipments.map((sh, i) => {
-    const unitText = Number.isFinite(sh.units) ? `${fmtNum(sh.units)} units` : '';
-    return `<div style="padding-top:${i ? 5 : 12}px;">${ordinal(i + 1)} shipment: <strong>${esc(sh.program)}</strong>${unitText ? ` (${esc(unitText)})` : ''}</div>`;
-  }).join('');
-
   const parsedParts = shipments.map(sh => ({ ...parseProgramDose(sh.program), units: sh.units }));
   const canCombineProgram = parsedParts.every(x => Number.isFinite(x.ml) && Number.isFinite(x.mg));
   const totalMl = canCombineProgram ? parsedParts.reduce((a, x) => a + x.ml, 0) : NaN;
@@ -1152,11 +1156,50 @@ ${administeredText ? `<p style="margin:16px 0 0;">- Your total # of units admini
   const combinedUnits = unitParts.length === parsedParts.length ? unitParts.reduce((a, x) => a + x, 0) : available;
   const totalUnitText = Number.isFinite(combinedUnits) ? `${fmtNum(combinedUnits)} units` : availableText;
 
-  const sectionII = `<tr><td style="padding:24px 30px 0;font-family:${F};font-size:14px;line-height:22px;color:${C.ink};">
-<p style="margin:0;"><strong>III.</strong> To prevent your vial/s of medication from expiring during the BUD period, the pharmacy will split your order into multiple shipments as follows:</p>
-<div style="padding:4px 0 0 18px;">${shipmentLines}
-<div style="margin-top:8px;border-top:1px dashed #7b8f98;padding-top:8px;">Total: <strong>${esc(combinedProgram)}</strong>${totalUnitText ? ` (${esc(totalUnitText)})` : ''}</div>
-</div>
+  return { shipments, availableText, administeredText, perDoseText, frequencyText, combinedProgram, totalUnitText };
+}
+
+// Section II paragraph for one product; only the first one carries the "II." numeral
+function refillBasedOn(it, pc, first) {
+  return `<p style="margin:${first ? '0' : '22px 0 0'};">${first ? '<strong>II.</strong> ' : ''}Based on your refill request of a <strong>${esc(it.program || '')}</strong> ${esc(it.name)} program${pc.availableText ? ` which has <strong>${esc(pc.availableText)}</strong> available` : ''}:</p>
+${pc.administeredText ? `<p style="margin:16px 0 0;">- Your total # of units administered in the BUD period (~12 weeks) is <strong>${esc(pc.administeredText)}</strong>.${pc.perDoseText && pc.frequencyText ? ` (${esc(pc.perDoseText)} ${esc(pc.frequencyText)}).` : ''}</p>` : ''}${it.tag === COOL_DRY ? `
+<div style="padding-top:10px;">${tagPill(it.tag)}</div>` : ''}`;
+}
+
+// Section III shipment lines + dashed Total for one product
+function refillShipmentLines(pc, firstPad) {
+  return pc.shipments.map((sh, i) => {
+    const unitText = Number.isFinite(sh.units) ? `${fmtNum(sh.units)} units` : '';
+    return `<div style="padding-top:${i ? 5 : firstPad}px;">${ordinal(i + 1)} shipment: <strong>${esc(sh.program)}</strong>${unitText ? ` (${esc(unitText)})` : ''}</div>`;
+  }).join('');
+}
+function refillShipmentTotal(pc) {
+  return `<div style="margin-top:8px;border-top:1px dashed #7b8f98;padding-top:8px;">Total: <strong>${esc(pc.combinedProgram)}</strong>${pc.totalUnitText ? ` (${esc(pc.totalUnitText)})` : ''}</div>`;
+}
+
+function refillLogicSections(list) {
+  const items = (Array.isArray(list) ? list : [list]).filter(it => it && it.name);
+  if (!items.length) return '';
+  const pieces = items.map(refillPieces);
+  const multi = items.length > 1;
+  const tdOpen = `<tr><td style="padding:24px 30px 0;font-family:${F};font-size:14px;line-height:22px;color:${C.ink};">`;
+
+  const sectionI = `${tdOpen}
+${items.map((it, i) => refillBasedOn(it, pieces[i], i === 0)).join('\n')}
+</td></tr>`;
+
+  const intro = '<p style="margin:0;"><strong>III.</strong> To prevent your vial/s of medication from expiring during the BUD period, the pharmacy will split your order into multiple shipments as follows:</p>';
+  const body = !multi
+    ? `<div style="padding:4px 0 0 18px;">${refillShipmentLines(pieces[0], 12)}
+${refillShipmentTotal(pieces[0])}
+</div>`
+    : items.map((it, i) => `<div style="padding:${i ? 20 : 12}px 0 0 18px;">
+<div><strong>${esc(it.program || '')}</strong> ${esc(it.name)}:</div>${refillShipmentLines(pieces[i], 6)}
+${refillShipmentTotal(pieces[i])}
+</div>`).join('\n');
+  const sectionII = `${tdOpen}
+${intro}
+${body}
 </td></tr>`;
 
   return sectionI + sectionII;
@@ -1193,6 +1236,11 @@ function sectionIV(s) {
       const count = shipmentCount(it);
       const shipTotal = fmtDollars(Math.round(count * Number(s.shippingRate) * 100) / 100);
       lines.push(`(${count}) shipment${count === 1 ? '' : 's'} <strong>${esc(shipTotal)}</strong>${count > 1 ? ` (${esc(rate)} ea.)` : ''}, UPS cold-pack shipping`);
+    }
+    if (s.sigPrice > 0) {   // signature is charged on every shipment of this order
+      const count = shipmentCount(it);
+      const sigTotal = fmtDollars(Math.round(count * s.sigPrice * 100) / 100);
+      lines.push(`(${count}) shipment${count === 1 ? '' : 's'} <strong>${esc(sigTotal)}</strong>${count > 1 ? ` (${esc(fmtDollars(s.sigPrice))} ea.)` : ''}, ${esc(s.sigLabel)}`);
     }
   });
   const consult = fmtDollars(s.consultFee);
@@ -1242,7 +1290,6 @@ function closingBlock() {
 
 function buildEmailBody(s) {
   const n = s.items.length;
-  const lead = s.items[0] || {};
   const logoSrc = safeUrl(CONFIG.logoUrl) || CONFIG.logoData;
   const logo = `<img src="${esc(logoSrc)}" alt="EHCNYC Elite Health Center NYC" width="140" style="display:block;width:140px;max-width:140px;height:auto;border:0;outline:none;text-decoration:none;">`;
 
@@ -1252,7 +1299,7 @@ function buildEmailBody(s) {
   ]);
 
   const orders = (n
-    ? refillLogicSections(lead)
+    ? refillLogicSections(s.items)
     : `<tr><td style="padding:24px 30px 0;font-family:${F};font-size:14px;color:${C.muted};">Add a product to build sections II and III.</td></tr>`);
 
   const comments = s.comments
